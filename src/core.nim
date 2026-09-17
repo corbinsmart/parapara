@@ -5,7 +5,6 @@ from paranim/math as pmath import nil
 import paranim/glfw
 import paranim/glm
 import random
-import examples_common
 
 import std/math
 
@@ -442,14 +441,25 @@ void main()
     vec2 topright = vec2(pos.x+size.x, pos.y+size.y);
 
     // edge
-    float d_edge_bottom = sdSegment(p, botleft+vec2(corner,0.0), botright+vec2(-corner,0.0), 0.02);
+    float d_edge_bot = sdSegment(p, botleft+vec2(corner,0.0), botright+vec2(-corner,0.0), 0.02);
+    float d_edge_bot_m = sdSegment(m, botleft+vec2(corner,0.0), botright+vec2(-corner,0.0), 0.02);
+    if (d_edge_bot_m < 0.0)
+      col = mix(col, green, sm(d_edge_bot));
+
     float d_edge_top = sdSegment(p, topleft+vec2(corner,0.0), topright+vec2(-corner,0.0), 0.02);
+    float d_edge_top_m = sdSegment(m, topleft+vec2(corner,0.0), topright+vec2(-corner,0.0), 0.02);
+    if (d_edge_top_m < 0.0)
+      col = mix(col, green, sm(d_edge_top));
+
     float d_edge_left = sdSegment(p, botleft+vec2(0.0,corner), topleft+vec2(0.0,-corner), 0.02);
+    float d_edge_left_m = sdSegment(m, botleft+vec2(0.0,corner), topleft+vec2(0.0,-corner), 0.02);
+    if (d_edge_left_m < 0.0)
+      col = mix(col, green, sm(d_edge_left));
+
     float d_edge_right = sdSegment(p, botright+vec2(0.0,corner), topright+vec2(0.0,-corner), 0.02);
-    col = mix(col, green, sm(d_edge_bottom));
-    col = mix(col, green, sm(d_edge_top));
-    col = mix(col, green, sm(d_edge_left));
-    col = mix(col, green, sm(d_edge_right));
+    float d_edge_right_m = sdSegment(m, botright+vec2(0.0,corner), topright+vec2(0.0,-corner), 0.02);
+    if (d_edge_right_m < 0.0)
+      col = mix(col, green, sm(d_edge_right));
 
     // corner
     vec2 center;
@@ -457,19 +467,27 @@ void main()
 
     center = topleft+vec2(corner_r,-corner_r);
     float d_arc_topleft = arc(p-center, corner_r, pi*0.5, pi, w);
-    col = mix(col, yellow, sm(d_arc_topleft));
+    float d_arc_topleft_m = arc(m-center, corner_r, pi*0.5, pi, w);
+    if (d_arc_topleft_m < 0.0)
+      col = mix(col, yellow, sm(d_arc_topleft));
 
     center = topright+vec2(-corner_r,-corner_r);
     float d_arc_topright = arc(p-center, corner_r, 0.0, pi*0.5, w);
-    col = mix(col, yellow, sm(d_arc_topright));
+    float d_arc_topright_m = arc(m-center, corner_r, 0.0, pi*0.5, w);
+    if (d_arc_topright_m < 0.0)
+      col = mix(col, yellow, sm(d_arc_topright));
 
     center = botleft+vec2(corner_r,corner_r);
     float d_arc_botleft = arc(p-center, corner_r, pi, pi*1.5, w);
-    col = mix(col, yellow, sm(d_arc_botleft));
+    float d_arc_botleft_m = arc(m-center, corner_r, pi, pi*1.5, w);
+    if (d_arc_botleft_m < 0.0)
+      col = mix(col, yellow, sm(d_arc_botleft));
 
     center = botright+vec2(-corner_r,corner_r);
     float d_arc_botright = arc(p-center, corner_r, pi*1.5, pi*2.0, w);
-    col = mix(col, yellow, sm(d_arc_botright));
+    float d_arc_botright_m = arc(m-center, corner_r, pi*1.5, pi*2.0, w);
+    if (d_arc_botright_m < 0.0)
+      col = mix(col, yellow, sm(d_arc_botright));
   }
 
 
