@@ -666,8 +666,8 @@ var
   pane: Pane
   activeBoxIndex = -1
   activeArrowIndex = -1
-  mouseStartPos = vec2(0f,0f)
-  boxStart = vec4(0f,0f,0f,0f)
+  mouseStartPos = vec2(0f)
+  boxStart = vec4(0f)
   activeHandle = Handle.None
 
 proc initPane(): UncompiledPane =
@@ -798,16 +798,13 @@ proc onMouseClick*(button: int, action: int, mods: int) =
       let
         index = pane.uniforms.uZIndex.data[activeBoxIndex]
         box = pane.uniforms.uBoxes.data[index]
-      boxStart = vec4(box.x,box.y,box.z,box.w)
+      boxStart = box
 
     # draw arrow
     else:
-      let
-        a = pane.uniforms.uArrows.data[0]
-        pos = vec2(iM.x,iM.y)
       activeArrowIndex = 0
       pane.uniforms.uArrows.disable = false
-      pane.uniforms.uArrows.data[activeArrowIndex] = vec4(pos.x, pos.y, a.z, a.w)
+      pane.uniforms.uArrows.data[activeArrowIndex].xy = iM
 
   elif action == 0:
     activeBoxIndex = -1
@@ -831,18 +828,19 @@ proc onMouseMove*(xpos: float, ypos: float) =
   # drag rect
   if activeBoxIndex > -1:
     let
-      delta = vec2(iM.x-mouseStartPos.x, iM.y-mouseStartPos.y)
-      index = pane.uniforms.uZIndex.data[activeBoxIndex] 
-      box = pane.uniforms.uBoxes.data[index]
-      pos = vec2(boxStart.x+delta.x, boxStart.y+delta.y)
+      delta = iM - mouseStartPos
+      box = pane.uniforms.uBoxes.data[activeBoxIndex]
+      pos = boxStart.xy + delta
     pane.uniforms.uBoxes.disable = false
-    pane.uniforms.uBoxes.data[activeBoxIndex] = vec4(pos.x, pos.y, box.z, box.w)
+    pane.uniforms.uBoxes.data[activeBoxIndex].xy = pos
+    pane.uniforms.uBoxes.data[activeBoxIndex].zw = box.zw
 
   # draw arrow
   if activeArrowIndex > -1:
     let arrow = pane.uniforms.uArrows.data[activeArrowIndex]
     pane.uniforms.uArrows.disable = false
-    pane.uniforms.uArrows.data[activeArrowIndex] = vec4(arrow.x, arrow.y, iM.x, iM.y)
+    pane.uniforms.uArrows.data[activeArrowIndex].xy = arrow.xy
+    pane.uniforms.uArrows.data[activeArrowIndex].zw = iM.xy
 
   # mousePos = vec2(xpos, ypos)
   # let
