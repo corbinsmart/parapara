@@ -1,3 +1,4 @@
+# import std/hotcodereloading
 import paranim/glfw
 import core
 
@@ -9,7 +10,7 @@ proc keyCallback(window: GLFWWindow, key: int32, scancode: int32, action: int32,
   when defined(paravim):
     if action == GLFW_PRESS and key == GLFWKey.Escape and paravim.isNormalMode():
       focusOnGame = not focusOnGame
-      return
+      return 
     else:
       if not focusOnGame:
         paravim.keyCallback(window, key, scancode, action, mods)
@@ -30,8 +31,8 @@ proc mouseButtonCallback(window: GLFWWindow, button: int32, action: int32, mods:
     if not focusOnGame:
       paravim.mouseButtonCallback(window, button, action, mods)
       return
-  if action == GLFWPress:
-    onMouseClick(button)
+  # if action == GLFWPress:
+  onMouseClick(button, action, mods)
 
 proc cursorPosCallback(window: GLFWWindow, xpos: float64, ypos: float64) {.cdecl.} =
   when defined(paravim):
@@ -60,10 +61,17 @@ var
   game: Game
   window: GLFWWindow
 
+echo "parakeet..."
+
 proc mainLoop() {.cdecl.} =
   let ts = glfwGetTime()
   game.deltaTime = ts - game.totalTime
   game.totalTime = ts
+
+  # hotreload
+  # if game.totalTime > 5f:
+  #   performCodeReload()
+  
   when defined(emscripten):
     var width, height: cint
     if emscripten_get_canvas_element_size("#canvas", width.addr, height.addr) >= 0:
@@ -81,7 +89,14 @@ proc mainLoop() {.cdecl.} =
   glfwPollEvents()
 
 when isMainModule:
+  echo "initing..."
   doAssert glfwInit()
+  echo "glfwInit"
+
+  # early set main loop for web
+  # when defined(emscripten):
+  #   echo "EMSCRIPTEN!"
+  #   emscripten_set_main_loop(mainLoop, 0, true)
 
   glfwWindowHint(GLFWContextVersionMajor, 3)
   glfwWindowHint(GLFWContextVersionMinor, 3)
@@ -89,12 +104,15 @@ when isMainModule:
   glfwWindowHint(GLFWOpenglProfile, GLFW_OPENGL_CORE_PROFILE)
   glfwWindowHint(GLFWResizable, GLFW_TRUE)
 
-  window = glfwCreateWindow(1024, 768, "Parakeet")
+  window = glfwCreateWindow(320, 320, "parapara")
   if window == nil:
     quit(-1)
+  echo "window"
 
   window.makeContextCurrent()
+  echo "context current"
   glfwSwapInterval(1)
+  echo "swap interval"
 
   discard window.setKeyCallback(keyCallback)
   discard window.setCharCallback(charCallback)
@@ -118,9 +136,13 @@ when isMainModule:
 
   game.totalTime = glfwGetTime()
 
+
   when defined(emscripten):
+    echo "EMSCRIPTEN!"
     emscripten_set_main_loop(mainLoop, 0, true)
+    # glfwSwapInterval(1)
   else:
+    # glfwSwapInterval(1)
     while not window.windowShouldClose:
       mainLoop()
 
