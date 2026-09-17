@@ -5,7 +5,7 @@ from paranim/math as pmath import nil
 import paranim/glfw
 import paranim/glm
 import random
-
+import typeinfo
 import std/math
 
 # import paranim/gl, paranim/gl/[uniforms, attributes, entities]
@@ -14,22 +14,27 @@ import std/math
 # import vmath
 
 type
+  float = float32
+  Handle = enum
+    None,
+    Left, Right, Top, Bottom,
+    TopLeft, TopRight, BottomLeft, BottomRight
   Game* = object of RootGame
     deltaTime*: float
     totalTime*: float
   PaneUniforms = tuple[
-    iTime: Uniform[GLfloat],
-    iResolution: Uniform[Vec3[GLfloat]],
-    iMouse: Uniform[Vec4[GLfloat]],
-    iM: Uniform[Vec2[GLfloat]],
-    uColor: Uniform[Vec4[GLfloat]],
-    uBalls: Uniform[seq[Vec4[GLfloat]]],
-    uBoxes: Uniform[seq[Vec4[GLfloat]]],
+    iTime: Uniform[float],
+    iResolution: Uniform[Vec3f],
+    iMouse: Uniform[Vec4f],
+    iM: Uniform[Vec2f],
+    uColor: Uniform[Vec4f],
+    uBalls: Uniform[seq[Vec4f]],
+    uBoxes: Uniform[seq[Vec4f]],
     uZIndex: Uniform[seq[GLint]],
-    uArrows: Uniform[seq[Vec4[GLfloat]]],
+    uArrows: Uniform[seq[Vec4f]],
   ]
   PaneAttributes = tuple[
-    aPos: Attribute[GLfloat]
+    aPos: Attribute[float]
   ]
   Pane = object of ArrayEntity[PaneUniforms, PaneAttributes]
   UncompiledPane = object of UncompiledEntity[Pane, PaneUniforms, PaneAttributes]
@@ -317,6 +322,7 @@ float spline(vec2 p) {
     return d;
 }
 
+// arc
 float DFarc(vec2 p, vec2 p1, vec2 p2) {
     vec2 v1 = p1;;
     vec2 v2 = p2;
@@ -619,14 +625,37 @@ void main()
     """
 
 # sdf collision
-proc sdRoundedBox(p: Vec2, b: Vec2, rr: Vec4): float =
+proc sdRoundedBox(p: Vec2f, b: Vec2f, rr: Vec4f): float =
   var r = rr
-  r.xy = if p.x > 0.0: r.xy else: r.zw
+  r.xy = if p.x > 0f: r.xy else: r.zw
   let q = abs(p) - b + r.x
-  return min(max(q.x,q.y),0.0) + length(max(q,0.0)) - r.x
+  min(max(q.x,q.y),0f) + length(max(q,0f)) - r.x
 
-# proc frag(fragColor: var Vec4, vertColor: Vec3) =
-#   fragColor = vec4(vertColor.x, vertColor.y, vertColor.z, 1.0)
+proc dfArc(p: Vec2f, p1: Vec2f, p2: Vec2f): float =
+  let
+    v1 = p1
+    v2 = p2
+    v = p
+    w = vec2(dot(v, -vec2(-v1.y, v1.x)), dot(v, vec2(-v2.y, v2.x)))
+    longarc = dot(v1, vec2(-v2.y, v2.x)) < 0.0
+    ingap = if longarc: max(w.x,w.y) else: min(w.x,w.y)
+  if ingap > 0.0: min(length(p1-p), length(p2-p)) else: abs(length(v) - length(v1))
+
+proc sdfArc(p: Vec2f, p1: Vec2f, p2: Vec2f, w: float): float =
+  dfArc(p, p1, p2) - w
+
+proc sdArc(pos: Vec2f, r: float, ang1: float, ang2: float, w: float): float =
+  let
+    p1 = r * vec2(cos(ang1), sin(ang1))
+    p2 = r * vec2(cos(ang2), sin(ang2))
+  sdfArc(pos, p1, p2, w)
+
+proc sdSegment(p: Vec2f, a: Vec2f, b: Vec2f, r: float): float =
+  let
+    ba = b-a
+    pa = p-a
+    h = clamp(dot(pa,ba)/dot(ba,ba), 0f, 1f)
+  length(pa-h*ba)-r
 
 randomize()
 
@@ -635,13 +664,14 @@ var
   windowHeight: int
   uncompiledPane: UncompiledPane
   pane: Pane
-  selectedBoxIndex = -1
-  selectedArrowIndex = -1
-  mouseStartPos = vec2(0.0,0.0)
-  boxStartPos = vec2(0.0,0.0)
+  activeBoxIndex = -1
+  activeArrowIndex = -1
+  mouseStartPos = vec2(0f,0f)
+  boxStart = vec4(0f,0f,0f,0f)
+  activeHandle = Handle.None
 
 proc initPane(): UncompiledPane =
-  var position = Attribute[GLfloat](size: 2, iter: 1)
+  var position = Attribute[float](size: 2, iter: 1)
   new(position.data)
   position.data[].add(vertices)
   
@@ -653,14 +683,14 @@ proc initPane(): UncompiledPane =
     ),
     uniforms: (
       iTime: Uniform[GLfloat](),
-      iResolution: Uniform[Vec3[GLfloat]](),
-      iMouse: Uniform[Vec4[GLfloat]](),
-      iM: Uniform[Vec2[GLfloat]](),
-      uColor: Uniform[Vec4[GLfloat]](),
-      uBalls: Uniform[seq[Vec4[GLfloat]]](),
-      uBoxes: Uniform[seq[Vec4[GLfloat]]](),
+      iResolution: Uniform[Vec3f](),
+      iMouse: Uniform[Vec4f](),
+      iM: Uniform[Vec2f](),
+      uColor: Uniform[Vec4f](),
+      uBalls: Uniform[seq[Vec4f]](),
+      uBoxes: Uniform[seq[Vec4f]](),
       uZIndex: Uniform[seq[GLint]](),
-      uArrows: Uniform[seq[Vec4[GLfloat]]](),
+      uArrows: Uniform[seq[Vec4f]](),
     )
   )
 
@@ -674,24 +704,80 @@ proc onMouseClick*(button: int, action: int, mods: int) =
   let v = pane.uniforms.iMouse.data
   let iResolution = pane.uniforms.iResolution.data
   
-  let iMouse = vec4(v.x, v.y, GLfloat(action), v.w)
+  let iMouse = vec4(v.x, v.y, action.float, v.w)
   pane.uniforms.iMouse.disable = false
   pane.uniforms.iMouse.data = iMouse
 
-  let iM = ((iMouse.xy*2.0)-iResolution.xy)/iResolution.y
+  let iM = ((iMouse.xy*2f)-iResolution.xy)/iResolution.y
   pane.uniforms.iM.disable = false
   pane.uniforms.iM.data = iM
 
-  if selectedBoxIndex == -1 and action == 1:
+  if activeBoxIndex == -1 and action == 1:
     for i in 0..<3:
       let
-        index = pane.uniforms.uZIndex.data[i]
-        corner_radii = vec4(1.0) * 0.05
-        box = pane.uniforms.uBoxes.data[index]
+        corner_radii = vec4(1f) * 0.05f
+        box = pane.uniforms.uBoxes.data[i]
         pos = -box.xy
         size = box.zw
+        corner_r = corner_radii.x
+        corner = corner_r * 2f
+      
+      # drag handle
+      let
+        botleft = vec2(pos.x-size.x, pos.y-size.y)
+        botright = vec2(pos.x+size.x, pos.y-size.y)
+        topleft = vec2(pos.x-size.x, pos.y+size.y)
+        topright = vec2(pos.x+size.x, pos.y+size.y)
+
+      # edge
+      # let d_edge_bot = sdSegment(iM, botleft+vec2(corner,0.0), botright+vec2(corner,0.0), 0.02)
+      # if d_edge_bot < 0.0:
+      #   activeHandle = Handle.Bottom
+
+      # let d_edge_top = sdSegment(iM, topleft+vec2(corner,0.0), topright+vec2(-corner,0.0), 0.02)
+      # if d_edge_top < 0.0:
+      #   activeHandle = Handle.Top
+
+      # let d_edge_left = sdSegment(iM, botleft+vec2(0.0,corner), topleft+vec2(0.0,-corner), 0.02)
+      # if d_edge_left < 0.0:
+      #   activeHandle = Handle.Left
+
+      # let d_edge_right = sdSegment(iM, botright+vec2(0.0,corner), topright+vec2(0.0,-corner), 0.02)
+      # if d_edge_right < 0.0:
+      #   activeHandle = Handle.Right
+
+    # corner
+    # vec2 center;
+    # float w = 0.02;
+
+    # center = topleft+vec2(corner_r,-corner_r);
+    # float d_arc_topleft = arc(p-center, corner_r, pi*0.5, pi, w);
+    # float d_arc_topleft_m = arc(m-center, corner_r, pi*0.5, pi, w);
+    # if (d_arc_topleft_m < 0.0)
+    #   col = mix(col, yellow, sm(d_arc_topleft));
+
+    # center = topright+vec2(-corner_r,-corner_r);
+    # float d_arc_topright = arc(p-center, corner_r, 0.0, pi*0.5, w);
+    # float d_arc_topright_m = arc(m-center, corner_r, 0.0, pi*0.5, w);
+    # if (d_arc_topright_m < 0.0)
+    #   col = mix(col, yellow, sm(d_arc_topright));
+
+    # center = botleft+vec2(corner_r,corner_r);
+    # float d_arc_botleft = arc(p-center, corner_r, pi, pi*1.5, w);
+    # float d_arc_botleft_m = arc(m-center, corner_r, pi, pi*1.5, w);
+    # if (d_arc_botleft_m < 0.0)
+    #   col = mix(col, yellow, sm(d_arc_botleft));
+
+    # center = botright+vec2(-corner_r,corner_r);
+    # float d_arc_botright = arc(p-center, corner_r, pi*1.5, pi*2.0, w);
+    # float d_arc_botright_m = arc(m-center, corner_r, pi*1.5, pi*2.0, w);
+    # if (d_arc_botright_m < 0.0)
+    #   col = mix(col, yellow, sm(d_arc_botright));
+
+      # drag body
+      let
         d = sdRoundedBox(iM+pos, size, corner_radii)
-        inside = d < 0.0
+        inside = d < 0f
       if inside:
         # bring to front
         # if index != 0:
@@ -703,29 +789,29 @@ proc onMouseClick*(button: int, action: int, mods: int) =
         #     pane.uniforms.uZIndex.data[j] = z
         #   pane.uniforms.uZIndex.data[i] = 0
 
-        selectedBoxIndex = i
+        activeBoxIndex = i
         break
 
     # drag box
-    if selectedBoxIndex > -1:
-      mouseStartPos = vec2(iM.x.float,iM.y.float)
+    if activeBoxIndex > -1:
+      mouseStartPos = vec2(iM.x,iM.y)
       let
-        index = pane.uniforms.uZIndex.data[selectedBoxIndex]
+        index = pane.uniforms.uZIndex.data[activeBoxIndex]
         box = pane.uniforms.uBoxes.data[index]
-      boxStartPos = vec2(box.x.float, box.y.float)
+      boxStart = vec4(box.x,box.y,box.z,box.w)
 
     # draw arrow
     else:
       let
         a = pane.uniforms.uArrows.data[0]
         pos = vec2(iM.x,iM.y)
-      selectedArrowIndex = 0
+      activeArrowIndex = 0
       pane.uniforms.uArrows.disable = false
-      pane.uniforms.uArrows.data[selectedArrowIndex] = vec4(pos.x, pos.y, a.z, a.w)
+      pane.uniforms.uArrows.data[activeArrowIndex] = vec4(pos.x, pos.y, a.z, a.w)
 
   elif action == 0:
-    selectedBoxIndex = -1
-    selectedArrowIndex = -1
+    activeBoxIndex = -1
+    activeArrowIndex = -1
 
 proc onMouseMove*(xpos: float, ypos: float) =
   let iResolution = pane.uniforms.iResolution.data
@@ -734,29 +820,29 @@ proc onMouseMove*(xpos: float, ypos: float) =
   let
     x = xpos
     y = iResolution.y - ypos
-  let iMouse = vec4(GLfloat(x), GLfloat(y), v.z, v.w)
+  let iMouse = vec4(x, y, v.z, v.w)
   pane.uniforms.iMouse.disable = false
   pane.uniforms.iMouse.data = iMouse
 
-  let iM = ((iMouse.xy*2.0)-iResolution.xy)/iResolution.y
+  let iM = ((iMouse.xy*2f)-iResolution.xy)/iResolution.y
   pane.uniforms.iM.disable = false
   pane.uniforms.iM.data = iM
 
   # drag rect
-  if selectedBoxIndex > -1:
+  if activeBoxIndex > -1:
     let
-      delta = vec2(iM.x.float-mouseStartPos.x.float, iM.y.float-mouseStartPos.y.float)
-      index = pane.uniforms.uZIndex.data[selectedBoxIndex] 
+      delta = vec2(iM.x-mouseStartPos.x, iM.y-mouseStartPos.y)
+      index = pane.uniforms.uZIndex.data[activeBoxIndex] 
       box = pane.uniforms.uBoxes.data[index]
-      pos = vec2(boxStartPos.x+delta.x, boxStartPos.y+delta.y)
+      pos = vec2(boxStart.x+delta.x, boxStart.y+delta.y)
     pane.uniforms.uBoxes.disable = false
-    pane.uniforms.uBoxes.data[selectedBoxIndex] = vec4(GLfloat(pos.x), GLfloat(pos.y), GLfloat(box.z), GLfloat(box.w))
+    pane.uniforms.uBoxes.data[activeBoxIndex] = vec4(pos.x, pos.y, box.z, box.w)
 
   # draw arrow
-  if selectedArrowIndex > -1:
-    let arrow = pane.uniforms.uArrows.data[selectedArrowIndex]
+  if activeArrowIndex > -1:
+    let arrow = pane.uniforms.uArrows.data[activeArrowIndex]
     pane.uniforms.uArrows.disable = false
-    pane.uniforms.uArrows.data[selectedArrowIndex] = vec4(GLfloat(arrow.x), GLfloat(arrow.y), GLfloat(iM.x), GLfloat(iM.y))
+    pane.uniforms.uArrows.data[activeArrowIndex] = vec4(arrow.x, arrow.y, iM.x, iM.y)
 
   # mousePos = vec2(xpos, ypos)
   # let
@@ -783,7 +869,60 @@ proc onWindowResize*(width: int, height: int, worldWidth: int, worldHeight: int)
   windowWidth = width
   windowHeight = height
   pane.uniforms.iResolution.disable = false
-  pane.uniforms.iResolution.data = vec3(GLfloat(windowWidth), GLfloat(windowHeight), GLfloat(1.0))
+  pane.uniforms.iResolution.data = vec3(windowWidth.float, windowHeight.float, 1f)
+
+proc test_types() =
+  # let
+  #   f: float = 0.0
+
+  #   v = vec4(0.0, 0.0, 0.0, 0.0)
+  #   uf = pane.uniforms.iTime.data
+  #   uv = pane.uniforms.iMouse.data
+
+  #   # sumf = f + uf
+  #   # sumv = v + uv
+  # echo f
+  # echo v
+  # echo uf
+  # echo uv
+
+  var x: Any
+  var
+    f: float = 42
+    f32: float32 = 42
+    f64: float64 = 42
+    ff = 42.0
+    fff = 42f
+    glf = GLfloat(42)
+    i = 42
+
+    f32_v: Vec2[float32] = vec2(42f, 42f)      # Vec2[float32]
+    f64_v: Vec2[float64] = vec2(42.0, 42.0)   # Vec2[float64]
+    vf: Vec2f = vec2(42f, 42f)
+
+  x = f.toAny
+  echo "f is ",x.kind
+
+  x = f32.toAny
+  echo "f32 is ",x.kind
+
+  x = f64.toAny
+  echo "f64 is ",x.kind
+
+  x = ff.toAny
+  echo "ff is ",x.kind
+
+  x = fff.toAny
+  echo "fff is ",x.kind
+
+  x = glf.toAny
+  echo "glf is ",x.kind
+
+  x = i.toAny
+  echo "i is ",x.kind
+
+  # todo: how to cast ff_v to Vec2[float32] ?
+  # let sum: Vec2f = f32_v + f64_v
 
 proc init*(game: var Game) =
   doAssert glInit()
@@ -797,25 +936,25 @@ proc init*(game: var Game) =
 
   var
     timeValue = glfwGetTime()
-    greenValue = (sin(timeValue) / 2.0f) + 0.5f
+    greenValue = (sin(timeValue) / 2f) + 0.5f
     color = vec4(GLfloat(0.0f), GLfloat(greenValue), GLfloat(0.0f), GLfloat(1.0f))
 
-  uncompiledPane.uniforms.iTime.data = GLfloat(0.0f)
-  uncompiledPane.uniforms.iResolution.data = vec3(GLfloat(windowWidth), GLfloat(windowHeight), GLfloat(1.0))
-  uncompiledPane.uniforms.iMouse.data = vec4(GLfloat(0.0), GLfloat(0.0), GLfloat(0.0), GLfloat(0.0))
+  uncompiledPane.uniforms.iTime.data = 0f
+  uncompiledPane.uniforms.iResolution.data = vec3(windowWidth.float, windowHeight.float, 1f)
+  uncompiledPane.uniforms.iMouse.data = vec4(0f)
   uncompiledPane.uniforms.uColor.data = color
   uncompiledPane.uniforms.uBalls.data = block:
     var balls = newSeq[Vec4[GLfloat]]()
     for i in 0 ..< 10:
-      var vel = vec2(-0.5+rand(1.0), -0.5+rand(1.0)) * 0.1
-      balls.add(vec4(GLfloat(0.0), GLfloat(0.0), GLfloat(vel.x), GLfloat(vel.y)))
+      let vel = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 0.1f
+      balls.add(vec4(0f, 0f, vel.x, vel.y))
     balls
   uncompiledPane.uniforms.uBoxes.data = block:
-    var boxes = newSeq[Vec4[GLfloat]]()
+    var boxes = newSeq[Vec4f]()
     for i in 0 ..< 3:
-      var pos = vec2(-0.5+rand(1.0), -0.5+rand(1.0)) * 1.0
-      var size = vec2(rand(1.0), rand(1.0)) * 0.5
-      boxes.add(vec4(GLfloat(pos.x), GLfloat(pos.y), GLfloat(size.x), GLfloat(size.y)))
+      var pos = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 1f
+      var size = vec2(rand(1f), rand(1f)) * 0.5f
+      boxes.add(vec4f(pos.x, pos.y, size.x, size.y))
     boxes
   uncompiledPane.uniforms.uZIndex.data = block:
     var zs = newSeq[GLint]()
@@ -823,11 +962,11 @@ proc init*(game: var Game) =
       zs.add(GLint(z))
     zs
   uncompiledPane.uniforms.uArrows.data = block:
-    var arrows = newSeq[Vec4[GLfloat]]()
+    var arrows = newSeq[Vec4f]()
     for i in 0 ..< 3:
-      var start = vec2(-0.5+rand(1.0), -0.5+rand(1.0)) * 1.0
-      var stop = vec2(-0.5+rand(1.0), -0.5+rand(1.0)) * 1.0
-      arrows.add(vec4(GLfloat(start.x), GLfloat(start.y), GLfloat(stop.x), GLfloat(stop.y)))
+      var start = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 1f
+      var stop = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 1f
+      arrows.add(vec4f(start.x, start.y, stop.x, stop.y))
     arrows
 
   pane = compile(game, uncompiledPane)
@@ -859,19 +998,19 @@ proc tick*(game: Game) =
     # friction
     # ball.zw *= 0.99
 
-    if ball.x < -1.0:
-      ball.x = -1.0
-      ball.z *= -1.0
-    if ball.x > 1.0:
-      ball.x = 1.0
-      ball.z *= -1.0
+    if ball.x < -1f:
+      ball.x = -1f
+      ball.z *= -1f
+    if ball.x > 1f:
+      ball.x = 1f
+      ball.z *= -1f
 
-    if ball.y < -1.0:
-      ball.y = -1.0
-      ball.w *= -1.0
-    if ball.y > 1.0:
-      ball.y = 1.0
-      ball.w *= -1.0
+    if ball.y < -1f:
+      ball.y = -1f
+      ball.w *= -1f
+    if ball.y > 1f:
+      ball.y = 1f
+      ball.w *= -1f
     pane.uniforms.uBalls.data[i] = ball
 
   glClearColor(60/255, 180/255, 30/255, 1f)
