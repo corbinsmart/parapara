@@ -35,8 +35,6 @@ type
   Pane = object of ArrayEntity[PaneUniforms, PaneAttributes]
   UncompiledPane = object of UncompiledEntity[Pane, PaneUniforms, PaneAttributes]
 
-echo "core.nim"
-
 const
   vertices = [-1f, -1f,
               -1f, 1f,

@@ -61,8 +61,6 @@ var
   game: Game
   window: GLFWWindow
 
-echo "parakeet..."
-
 proc mainLoop() {.cdecl.} =
   let ts = glfwGetTime()
   game.deltaTime = ts - game.totalTime
@@ -89,9 +87,7 @@ proc mainLoop() {.cdecl.} =
   glfwPollEvents()
 
 when isMainModule:
-  echo "initing..."
   doAssert glfwInit()
-  echo "glfwInit"
 
   # early set main loop for web
   # when defined(emscripten):
@@ -107,12 +103,9 @@ when isMainModule:
   window = glfwCreateWindow(320, 320, "parapara")
   if window == nil:
     quit(-1)
-  echo "window"
 
   window.makeContextCurrent()
-  echo "context current"
   glfwSwapInterval(1)
-  echo "swap interval"
 
   discard window.setKeyCallback(keyCallback)
   discard window.setCharCallback(charCallback)
