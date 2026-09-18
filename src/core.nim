@@ -42,7 +42,7 @@ type
 const
   pi = PI.float32
   BALL_COUNT = 10
-  BOX_COUNT = 3
+  BOX_COUNT = 1
   ARROW_COUNT = 3
   vertices = [-1f, -1f,
               -1f, 1f,
@@ -717,17 +717,18 @@ proc onMouseClick*(button: int, action: int, mods: int) =
   pane.uniforms.iM.data = iM
 
   if activeBoxIndex == -1 and action == 1:
-    for i in 0..<3:
+    # body/handle selection
+    for i in 0 ..< BOX_COUNT:
       let
         corner_radii = vec4(0.05f)
         box = pane.uniforms.uBoxes.data[i]
-        pos = -box.xy
+        pos = box.xy
         size = box.zw
         corner_r = corner_radii.x
         corner = corner_r * 2f
         width = 0.02f
       
-      # drag handle
+      # select handle
       let
         botleft = pos + vec2(-size.x, -size.y)
         botright = pos + vec2(size.x, -size.y)
@@ -754,55 +755,46 @@ proc onMouseClick*(button: int, action: int, mods: int) =
         activeHandle = Handle.Right
 
       # corner
-      # var center: Vec2f
-      # center = topleft+vec2(corner_r,-corner_r)
-      # let d_arc_topleft = sdArc(iM-center, corner_r, pi*0.5f, pi, width);
-      # if d_arc_topleft < 0f:
-      #   activeHandle = Handle.TopLeft
+      var center: Vec2f
+      center = topleft+vec2(corner_r,-corner_r)
+      let d_arc_topleft = sdArc(iM-center, corner_r, pi*0.5f, pi, width);
+      if d_arc_topleft < 0f:
+        activeHandle = Handle.TopLeft
 
-      # center = topright+vec2(-corner_r,-corner_r)
-      # let d_arc_topright = sdArc(iM-center, corner_r, 0f, pi*0.5f, width);
-      # if d_arc_topright < 0f:
-      #   activeHandle = Handle.TopRight
+      center = topright+vec2(-corner_r,-corner_r)
+      let d_arc_topright = sdArc(iM-center, corner_r, 0f, pi*0.5f, width);
+      if d_arc_topright < 0f:
+        activeHandle = Handle.TopRight
 
-      # center = botleft+vec2(corner_r,corner_r)
-      # let d_arc_botleft = sdArc(iM-center, corner_r, pi, pi*1.5f, width);
-      # if d_arc_botleft < 0f:
-      #   activeHandle = Handle.BottomLeft
+      center = botleft+vec2(corner_r,corner_r)
+      let d_arc_botleft = sdArc(iM-center, corner_r, pi, pi*1.5f, width);
+      if d_arc_botleft < 0f:
+        activeHandle = Handle.BottomLeft
 
-      # center = botright+vec2(-corner_r,corner_r)
-      # let d_arc_botright = sdArc(iM-center, corner_r, pi*1.5f, pi*2f, width);
-      # if d_arc_botright < 0f:
-      #   activeHandle = Handle.BottomRight
+      center = botright+vec2(-corner_r,corner_r)
+      let d_arc_botright = sdArc(iM-center, corner_r, pi*1.5f, pi*2f, width);
+      if d_arc_botright < 0f:
+        activeHandle = Handle.BottomRight
 
-      if activeHandle != Handle.None:
-        echo i," ",activeHandle
-
-      # drag body
+      # select body
       let
-        d = sdRoundedBox(iM+pos, size, corner_radii)
+        d = sdRoundedBox(iM-pos, size, corner_radii)
         inside = d < 0f
       if inside:
-        # bring to front
-        # if index != 0:
-        #   for j in 0..<3:
-        #     var z = pane.uniforms.uZIndex.data[j]
-        #     z += 1
-        #     if z >= 3:
-        #       z = 3-1
-        #     pane.uniforms.uZIndex.data[j] = z
-        #   pane.uniforms.uZIndex.data[i] = 0
-
         activeBoxIndex = i
         break
 
-    # drag box
-    if activeBoxIndex > -1:
+    # start drag box handle
+    if activeBoxIndex > -1 and activeHandle != Handle.None:
+      echo activeBoxIndex," ",activeHandle
       mouseStartPos = vec2(iM.x,iM.y)
-      let
-        index = pane.uniforms.uZIndex.data[activeBoxIndex]
-        box = pane.uniforms.uBoxes.data[index]
-      boxStart = box
+      boxStart = pane.uniforms.uBoxes.data[activeBoxIndex]
+
+    # start drag box body
+    elif activeBoxIndex > -1 and activeHandle == Handle.None:
+      echo "drag box body"
+      mouseStartPos = vec2(iM.x,iM.y)
+      boxStart = pane.uniforms.uBoxes.data[activeBoxIndex]
 
     # draw arrow
     else:
@@ -813,6 +805,7 @@ proc onMouseClick*(button: int, action: int, mods: int) =
   elif action == 0:
     activeBoxIndex = -1
     activeArrowIndex = -1
+    activeHandle = Handle.None
 
 proc onMouseMove*(xpos: float, ypos: float) =
   let iResolution = pane.uniforms.iResolution.data
@@ -829,46 +822,48 @@ proc onMouseMove*(xpos: float, ypos: float) =
   pane.uniforms.iM.disable = false
   pane.uniforms.iM.data = iM
 
-  activeHandle = Handle.None
-  for i in 0..<BOX_COUNT:
+  # drag box handle
+  if activeBoxIndex > -1 and activeHandle != Handle.None:
     let
-      corner_radii = vec4(0.05f)
-      box = pane.uniforms.uBoxes.data[i]
-      pos = -box.xy
-      size = box.zw
-      corner_r = corner_radii.x
-      corner = corner_r * 2f
-      width = 0.02f
-    
-    # drag handle
-    let
-      botleft = pos + vec2(-size.x, -size.y)
-      botright = pos + vec2(size.x, -size.y)
-      topleft = pos + vec2(-size.x, size.y)
-      topright = pos + vec2(size.x, size.y)
+      delta = iM - mouseStartPos
+      pos = vec2(boxStart.x, boxStart.y)
+      
+    var scale = vec2(0f)
+        
+    case activeHandle:
+      # edge
+      of Handle.Bottom:
+        scale.y = -1f
+      of Handle.Top:
+        scale.y = 1f
+      of Handle.Right:
+        scale.x = 1f
+      of Handle.Left:
+        scale.x = -1f
+      
+      # corner
+      of Handle.TopRight:
+        scale.x = 1f
+        scale.y = 1f
+      of Handle.TopLeft:
+        scale.x = -1f
+        scale.y = 1f
+      of Handle.BottomLeft:
+        scale.x = -1f
+        scale.y = -1f
+      of Handle.BottomRight:
+        scale.x = 1f
+        scale.y = -1f
+      else:
+        discard 
 
-    # edge
-    let d_edge_bot = sdSegment(iM, botleft+vec2(corner,0f), botright+vec2(corner,0f), width)
-    if d_edge_bot < 0f:
-      activeHandle = Handle.Bottom
+    let size = boxStart.zw + delta * scale
+    pane.uniforms.uBoxes.disable = false
+    pane.uniforms.uBoxes.data[activeBoxIndex].xy = pos
+    pane.uniforms.uBoxes.data[activeBoxIndex].zw = size
 
-    let d_edge_top = sdSegment(iM, topleft+vec2(corner,0f), topright+vec2(-corner,0f), width)
-    if d_edge_top < 0f:
-      activeHandle = Handle.Top
-
-    let d_edge_left = sdSegment(iM, botleft+vec2(0f,corner), topleft+vec2(0f,-corner), width)
-    if d_edge_left < 0f:
-      activeHandle = Handle.Left
-
-    let d_edge_right = sdSegment(iM, botright+vec2(0f,corner), topright+vec2(0f,-corner), width)
-    if d_edge_right < 0f:
-      activeHandle = Handle.Right
-
-  if activeHandle != Handle.None:
-    echo activeHandle
-
-  # drag rect
-  if activeBoxIndex > -1:
+  # drag box body
+  elif activeBoxIndex > -1 and activeHandle == Handle.None:
     let
       delta = iM - mouseStartPos
       box = pane.uniforms.uBoxes.data[activeBoxIndex]
