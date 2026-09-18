@@ -6,7 +6,7 @@ import paranim/glfw
 import paranim/glm
 import random
 import typeinfo
-import std/math
+import math
 
 # import paranim/gl, paranim/gl/[uniforms, attributes, entities]
 # from paranim/gl/attributes import nil
@@ -40,6 +40,10 @@ type
   UncompiledPane = object of UncompiledEntity[Pane, PaneUniforms, PaneAttributes]
 
 const
+  pi = PI.float32
+  BALL_COUNT = 10
+  BOX_COUNT = 3
+  ARROW_COUNT = 3
   vertices = [-1f, -1f,
               -1f, 1f,
               1f, 1f,
@@ -69,10 +73,10 @@ uniform vec4 iMouse;
 uniform vec2 iM;
 
 uniform vec4 uColor;
-uniform vec4 uBalls[10];
-uniform vec4 uBoxes[3];
-uniform int uZIndex[3];
-uniform vec4 uArrows[3];
+uniform vec4 uBalls[""" & $BALL_COUNT & """];
+uniform vec4 uBoxes[""" & $BOX_COUNT & """];
+uniform int uZIndex[""" & $BOX_COUNT & """];
+uniform vec4 uArrows[""" & $ARROW_COUNT & """];
 
 // const
 const vec3 c = vec3(1.,0.,-1.);
@@ -715,64 +719,64 @@ proc onMouseClick*(button: int, action: int, mods: int) =
   if activeBoxIndex == -1 and action == 1:
     for i in 0..<3:
       let
-        corner_radii = vec4(1f) * 0.05f
+        corner_radii = vec4(0.05f)
         box = pane.uniforms.uBoxes.data[i]
         pos = -box.xy
         size = box.zw
         corner_r = corner_radii.x
         corner = corner_r * 2f
+        width = 0.02f
       
       # drag handle
       let
-        botleft = vec2(pos.x-size.x, pos.y-size.y)
-        botright = vec2(pos.x+size.x, pos.y-size.y)
-        topleft = vec2(pos.x-size.x, pos.y+size.y)
-        topright = vec2(pos.x+size.x, pos.y+size.y)
+        botleft = pos + vec2(-size.x, -size.y)
+        botright = pos + vec2(size.x, -size.y)
+        topleft = pos + vec2(-size.x, size.y)
+        topright = pos + vec2(size.x, size.y)
+
+      activeHandle = Handle.None
 
       # edge
-      # let d_edge_bot = sdSegment(iM, botleft+vec2(corner,0.0), botright+vec2(corner,0.0), 0.02)
-      # if d_edge_bot < 0.0:
-      #   activeHandle = Handle.Bottom
+      let d_edge_bot = sdSegment(iM, botleft+vec2(corner,0f), botright+vec2(corner,0f), width)
+      if d_edge_bot < 0f:
+        activeHandle = Handle.Bottom
 
-      # let d_edge_top = sdSegment(iM, topleft+vec2(corner,0.0), topright+vec2(-corner,0.0), 0.02)
-      # if d_edge_top < 0.0:
-      #   activeHandle = Handle.Top
+      let d_edge_top = sdSegment(iM, topleft+vec2(corner,0f), topright+vec2(-corner,0f), width)
+      if d_edge_top < 0f:
+        activeHandle = Handle.Top
 
-      # let d_edge_left = sdSegment(iM, botleft+vec2(0.0,corner), topleft+vec2(0.0,-corner), 0.02)
-      # if d_edge_left < 0.0:
-      #   activeHandle = Handle.Left
+      let d_edge_left = sdSegment(iM, botleft+vec2(0f,corner), topleft+vec2(0f,-corner), width)
+      if d_edge_left < 0f:
+        activeHandle = Handle.Left
 
-      # let d_edge_right = sdSegment(iM, botright+vec2(0.0,corner), topright+vec2(0.0,-corner), 0.02)
-      # if d_edge_right < 0.0:
-      #   activeHandle = Handle.Right
+      let d_edge_right = sdSegment(iM, botright+vec2(0f,corner), topright+vec2(0f,-corner), width)
+      if d_edge_right < 0f:
+        activeHandle = Handle.Right
 
-    # corner
-    # vec2 center;
-    # float w = 0.02;
+      # corner
+      # var center: Vec2f
+      # center = topleft+vec2(corner_r,-corner_r)
+      # let d_arc_topleft = sdArc(iM-center, corner_r, pi*0.5f, pi, width);
+      # if d_arc_topleft < 0f:
+      #   activeHandle = Handle.TopLeft
 
-    # center = topleft+vec2(corner_r,-corner_r);
-    # float d_arc_topleft = arc(p-center, corner_r, pi*0.5, pi, w);
-    # float d_arc_topleft_m = arc(m-center, corner_r, pi*0.5, pi, w);
-    # if (d_arc_topleft_m < 0.0)
-    #   col = mix(col, yellow, sm(d_arc_topleft));
+      # center = topright+vec2(-corner_r,-corner_r)
+      # let d_arc_topright = sdArc(iM-center, corner_r, 0f, pi*0.5f, width);
+      # if d_arc_topright < 0f:
+      #   activeHandle = Handle.TopRight
 
-    # center = topright+vec2(-corner_r,-corner_r);
-    # float d_arc_topright = arc(p-center, corner_r, 0.0, pi*0.5, w);
-    # float d_arc_topright_m = arc(m-center, corner_r, 0.0, pi*0.5, w);
-    # if (d_arc_topright_m < 0.0)
-    #   col = mix(col, yellow, sm(d_arc_topright));
+      # center = botleft+vec2(corner_r,corner_r)
+      # let d_arc_botleft = sdArc(iM-center, corner_r, pi, pi*1.5f, width);
+      # if d_arc_botleft < 0f:
+      #   activeHandle = Handle.BottomLeft
 
-    # center = botleft+vec2(corner_r,corner_r);
-    # float d_arc_botleft = arc(p-center, corner_r, pi, pi*1.5, w);
-    # float d_arc_botleft_m = arc(m-center, corner_r, pi, pi*1.5, w);
-    # if (d_arc_botleft_m < 0.0)
-    #   col = mix(col, yellow, sm(d_arc_botleft));
+      # center = botright+vec2(-corner_r,corner_r)
+      # let d_arc_botright = sdArc(iM-center, corner_r, pi*1.5f, pi*2f, width);
+      # if d_arc_botright < 0f:
+      #   activeHandle = Handle.BottomRight
 
-    # center = botright+vec2(-corner_r,corner_r);
-    # float d_arc_botright = arc(p-center, corner_r, pi*1.5, pi*2.0, w);
-    # float d_arc_botright_m = arc(m-center, corner_r, pi*1.5, pi*2.0, w);
-    # if (d_arc_botright_m < 0.0)
-    #   col = mix(col, yellow, sm(d_arc_botright));
+      if activeHandle != Handle.None:
+        echo i," ",activeHandle
 
       # drag body
       let
@@ -824,6 +828,44 @@ proc onMouseMove*(xpos: float, ypos: float) =
   let iM = ((iMouse.xy*2f)-iResolution.xy)/iResolution.y
   pane.uniforms.iM.disable = false
   pane.uniforms.iM.data = iM
+
+  activeHandle = Handle.None
+  for i in 0..<BOX_COUNT:
+    let
+      corner_radii = vec4(0.05f)
+      box = pane.uniforms.uBoxes.data[i]
+      pos = -box.xy
+      size = box.zw
+      corner_r = corner_radii.x
+      corner = corner_r * 2f
+      width = 0.02f
+    
+    # drag handle
+    let
+      botleft = pos + vec2(-size.x, -size.y)
+      botright = pos + vec2(size.x, -size.y)
+      topleft = pos + vec2(-size.x, size.y)
+      topright = pos + vec2(size.x, size.y)
+
+    # edge
+    let d_edge_bot = sdSegment(iM, botleft+vec2(corner,0f), botright+vec2(corner,0f), width)
+    if d_edge_bot < 0f:
+      activeHandle = Handle.Bottom
+
+    let d_edge_top = sdSegment(iM, topleft+vec2(corner,0f), topright+vec2(-corner,0f), width)
+    if d_edge_top < 0f:
+      activeHandle = Handle.Top
+
+    let d_edge_left = sdSegment(iM, botleft+vec2(0f,corner), topleft+vec2(0f,-corner), width)
+    if d_edge_left < 0f:
+      activeHandle = Handle.Left
+
+    let d_edge_right = sdSegment(iM, botright+vec2(0f,corner), topright+vec2(0f,-corner), width)
+    if d_edge_right < 0f:
+      activeHandle = Handle.Right
+
+  if activeHandle != Handle.None:
+    echo activeHandle
 
   # drag rect
   if activeBoxIndex > -1:
@@ -943,25 +985,25 @@ proc init*(game: var Game) =
   uncompiledPane.uniforms.uColor.data = color
   uncompiledPane.uniforms.uBalls.data = block:
     var balls = newSeq[Vec4[GLfloat]]()
-    for i in 0 ..< 10:
+    for i in 0 ..< BALL_COUNT:
       let vel = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 0.1f
       balls.add(vec4(0f, 0f, vel.x, vel.y))
     balls
   uncompiledPane.uniforms.uBoxes.data = block:
     var boxes = newSeq[Vec4f]()
-    for i in 0 ..< 3:
+    for i in 0 ..< BOX_COUNT:
       var pos = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 1f
       var size = vec2(rand(1f), rand(1f)) * 0.5f
       boxes.add(vec4f(pos.x, pos.y, size.x, size.y))
     boxes
   uncompiledPane.uniforms.uZIndex.data = block:
     var zs = newSeq[GLint]()
-    for z in 0 ..< 3:
+    for z in 0 ..< BOX_COUNT:
       zs.add(GLint(z))
     zs
   uncompiledPane.uniforms.uArrows.data = block:
     var arrows = newSeq[Vec4f]()
-    for i in 0 ..< 3:
+    for i in 0 ..< ARROW_COUNT:
       var start = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 1f
       var stop = vec2(-0.5f+rand(1f), -0.5f+rand(1f)) * 1f
       arrows.add(vec4f(start.x, start.y, stop.x, stop.y))
@@ -987,7 +1029,7 @@ proc tick*(game: Game) =
 
   # sim balls
   pane.uniforms.uBalls.disable = false
-  for i in 0 ..< 10:
+  for i in 0 ..< BALL_COUNT:
     var ball = pane.uniforms.uBalls.data[i]
     
     # update vel
