@@ -673,6 +673,7 @@ var
   mouseStartPos = vec2(0f)
   boxStart = vec4(0f)
   activeHandle = Handle.None
+  holdingOption = false
 
 proc initPane(): UncompiledPane =
   var position = Attribute[float](size: 2, iter: 1)
@@ -699,10 +700,18 @@ proc initPane(): UncompiledPane =
   )
 
 proc onKeyPress*(key: int) =
-  discard
+  case key:
+    of 342:
+      holdingOption = true
+    else:
+      discard
 
 proc onKeyRelease*(key: int) =
-  discard
+  case key:
+    of 342:
+      holdingOption = false
+    else:
+      discard
 
 proc onMouseClick*(button: int, action: int, mods: int) =
   let v = pane.uniforms.iMouse.data
@@ -786,13 +795,11 @@ proc onMouseClick*(button: int, action: int, mods: int) =
 
     # start drag box handle
     if activeBoxIndex > -1 and activeHandle != Handle.None:
-      echo activeBoxIndex," ",activeHandle
       mouseStartPos = vec2(iM.x,iM.y)
       boxStart = pane.uniforms.uBoxes.data[activeBoxIndex]
 
     # start drag box body
     elif activeBoxIndex > -1 and activeHandle == Handle.None:
-      echo "drag box body"
       mouseStartPos = vec2(iM.x,iM.y)
       boxStart = pane.uniforms.uBoxes.data[activeBoxIndex]
 
@@ -857,6 +864,11 @@ proc onMouseMove*(xpos: float, ypos: float) =
         scale = vec2(0.5f,-0.5f)
       else:
         discard 
+
+    # symmetric scaling
+    if holdingOption:
+      repos = vec2(0f)
+      scale *= 2f
 
     let
       delta = iM - mouseStartPos
