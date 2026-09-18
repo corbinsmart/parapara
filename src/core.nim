@@ -824,40 +824,44 @@ proc onMouseMove*(xpos: float, ypos: float) =
 
   # drag box handle
   if activeBoxIndex > -1 and activeHandle != Handle.None:
-    let
-      delta = iM - mouseStartPos
-      pos = vec2(boxStart.x, boxStart.y)
-      
     var scale = vec2(0f)
+    var repos = vec2(0f)
         
     case activeHandle:
       # edge
       of Handle.Bottom:
-        scale.y = -1f
+        scale.y = -0.5f
+        repos.y = 0.5f
       of Handle.Top:
-        scale.y = 1f
+        scale.y = 0.5f
+        repos.y = 0.5f
       of Handle.Right:
-        scale.x = 1f
+        repos.x = 0.5f
+        scale.x = 0.5f
       of Handle.Left:
-        scale.x = -1f
+        repos.x = 0.5f
+        scale.x = -0.5f
       
       # corner
       of Handle.TopRight:
-        scale.x = 1f
-        scale.y = 1f
+        repos = vec2(0.5f,0.5f)
+        scale = vec2(0.5f,0.5f)
       of Handle.TopLeft:
-        scale.x = -1f
-        scale.y = 1f
+        repos = vec2(0.5f,0.5f)
+        scale = vec2(-0.5f,0.5f)
       of Handle.BottomLeft:
-        scale.x = -1f
-        scale.y = -1f
+        repos = vec2(0.5f,0.5f)
+        scale = vec2(-0.5f,-0.5f)
       of Handle.BottomRight:
-        scale.x = 1f
-        scale.y = -1f
+        repos = vec2(0.5f,0.5f)
+        scale = vec2(0.5f,-0.5f)
       else:
         discard 
 
-    let size = boxStart.zw + delta * scale
+    let
+      delta = iM - mouseStartPos
+      pos = boxStart.xy + delta * repos
+      size = boxStart.zw + delta * scale
     pane.uniforms.uBoxes.disable = false
     pane.uniforms.uBoxes.data[activeBoxIndex].xy = pos
     pane.uniforms.uBoxes.data[activeBoxIndex].zw = size
